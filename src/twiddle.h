@@ -39,7 +39,7 @@ public:
   /**
    Calculates the mean squared error
 
-   @return mean squared error
+   @return root mean squared error
    */
   double CalculateError();
   

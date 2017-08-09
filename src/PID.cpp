@@ -31,8 +31,18 @@ void PID::Init(double Kp, double Ki, double Kd) {
 
 void PID::UpdateError(double cte) {
   
+  // Proportional
   p_error = cte;
-  i_error += cte;
+  
+  // Integral
+  if (cte < 0.001) {
+    i_error = 0;
+  }
+  else {
+    i_error += cte;
+  }
+  
+  // Derivative
   d_error = cte - d_error_past;
   d_error_past = d_error;
   
@@ -49,7 +59,18 @@ void PID::ResetError() {
 
 double PID::TotalError() {
   
-  return -gain[0] * p_error - gain[1] * i_error - gain[2] * d_error;
+  double total_error;
+  
+  total_error = -gain[0] * p_error - gain[1] * i_error - gain[2] * d_error;
+  
+  if (total_error > 1.0) {
+    total_error = 1.0;
+  }
+  else if (total_error < -1.0) {
+    total_error = -1.0;
+  }
+  
+  return total_error;
   
 }
 

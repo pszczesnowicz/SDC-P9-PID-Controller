@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <numeric>
+#include <math.h>
 
 #include "twiddle.h"
 
@@ -46,10 +47,10 @@ double Twiddle::CalculateSum() {
   
 }
 
-// Calculate the mean squared error
+// Calculate the root mean squared error
 double Twiddle::CalculateError() {
   
-  return sum_squared_error / iterations;
+  return sqrt(sum_squared_error / iterations);
   
 }
 
