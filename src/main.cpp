@@ -5,7 +5,6 @@
 
 #include "json.hpp"
 #include "PID.h"
-#include "twiddle.h"
 
 using json = nlohmann::json;
 using namespace std;
@@ -45,17 +44,20 @@ int main()
 {
   uWS::Hub h;
   
-  // Initializing the PID variable
-  PID pid;
+  // Creating PID controllers
+  PID pid_steering, pid_throttle;
   
-  pid.Init(0.05, 0.0001, 0.5);
+  // Initializing the PID controllers
+  // Kp, Ki, Kd, Kp_inc, Ki_inc, Kd_inc
+  pid_steering.Init(0.05, 0.0, 0.0, 0.05, 0.0, 0.5);
+  pid_throttle.Init(0.2, 0.0, 3.0, 0.0, 0.0, 0.0);
   
-  // Initializing the twiddle variable
-  Twiddle twiddle;
+  int total_iterations;
+  total_iterations = 0;
   
-  twiddle.Init(0.01, 0.0, 0.01, 1);
-  
-  h.onMessage([&pid, &twiddle](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  h.onMessage([&pid_steering, &pid_throttle, &total_iterations]
+              (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+                
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -76,180 +78,96 @@ int main()
           double cte = std::stod(j[1]["cte"].get<std::string>());
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
-          double steer_value = 0;
           
-          // Start optimizing mode
-          if (twiddle.CalculateSum() > twiddle.tolerance) {
+          double steer_value, throttle_value, target_speed, speed_error;
+          
+          pid_steering.UpdateError(cte);
+          
+          // Normalizing the steering value
+          steer_value = pid_steering.TotalError() / -deg2rad(25.0);
+          
+          total_iterations += 1;
+          
+          // Starting optimizing mode if the sum of the gain increments is greater than the set threshold
+          if (pid_steering.CalculateSum() > 0.1) {
             
             cout << "Optimizing" << endl;
             
-            pid.UpdateError(cte);
-            steer_value = pid.TotalError();
-            
-            twiddle.iterations += 1;
-            twiddle.sum_squared_error += pow(cte, 2.0);
+            // Optimizing the PID gains while trying to maintain a constant speed
+            target_speed = 40;
+            speed_error = target_speed - speed;
+            pid_throttle.UpdateError(speed_error);
+            throttle_value = pid_throttle.TotalError();
             
             // Resetting the simulator if the car drives off the track or gets stuck
-            // Start twiddle
-            if ((fabs(cte) > 4.5 && twiddle.iterations > 200)|| (speed < 5 && twiddle.iterations > 200)) {
-              
-              switch (twiddle.order) {
-                
-                // First twiddle - Incrementing the PID gain
-                case 1: {
-                  cout << "first twiddle **************************************************************" << endl;
-                  
-                  pid.gain[twiddle.i] += twiddle.gain_increments[twiddle.i];
-                  
-                  twiddle.order = 2;
-                  break;
-                  
-                } // End case 1
-                
-                // Second twiddle - Checking the effect of the first twiddle
-                case 2: {
-                  cout << "second twiddle **************************************************************" << endl;
-                  
-                  // Checking if the the first twiddle improved the error and distance traveled
-                  if (twiddle.CalculateError() < twiddle.best_error && twiddle.iterations > twiddle.best_iterations) {
-                    
-                    // Setting new improvement requirements
-                    twiddle.best_error = twiddle.CalculateError();
-                    twiddle.best_iterations = twiddle.iterations;
-                    
-                    // Increasing the PID gain incrementing value
-                    twiddle.gain_increments[twiddle.i] *= 1.1;
-                    
-                    // Resetting the order for the next PID gain
-                    twiddle.order = 1;
-                    
-                    // Moving to the next PID gain
-                    twiddle.i = (twiddle.i + 1) % 3;
-                    
-                    // Skipping the integral gain - Best performance with integral term = 0 so far
-                    if (twiddle.i == 1) {
-                      twiddle.i += 1;
-                    }
-                    
-                    break;
-                    
-                  }
-                  
-                  else {
-                    
-                    // If the first twiddle did not improve performance then twiddle in the other direction
-                    pid.gain[twiddle.i] -= 2 * twiddle.gain_increments[twiddle.i];
-                    
-                    // Check to ensure that the PID gains stay positive
-                    if (pid.gain[twiddle.i] < 0) {
-                      pid.gain[twiddle.i] = 0.0;
-                    }
-                    
-                    // On next simulator crash check effect of second twiddle
-                    twiddle.order = 3;
-                    break;
-                    
-                  }
-                  
-                } // End case 2
-                
-                // Third twiddle - Checking the effect of the second twiddle
-                case 3: {
-                  cout << "third twiddle **************************************************************" << endl;
-                  
-                  // Checking if the the second twiddle improved the error and distance traveled
-                  if (twiddle.CalculateError() < twiddle.best_error && twiddle.iterations > twiddle.best_iterations) {
-                    
-                    // Setting new improvement requirements
-                    twiddle.best_error = twiddle.CalculateError();
-                    twiddle.best_iterations = twiddle.iterations;
-                    
-                    // Increasing the PID gain incrementing value
-                    twiddle.gain_increments[twiddle.i] *= 1.1;
-                    
-                    // Resetting the order for the next PID gain
-                    twiddle.order = 1;
-                    
-                    // Moving to the next PID gain
-                    twiddle.i = (twiddle.i + 1) % 3;
-                    
-                    // Skipping the integral gain - Best performance with integral term = 0 so far
-                    if (twiddle.i == 1) {
-                      twiddle.i += 1;
-                    }
-                    
-                    break;
-                    
-                  }
-                  
-                  else {
-                    
-                    // Resetting the PID gain to its value before the first twiddle
-                    pid.gain[twiddle.i] += twiddle.gain_increments[twiddle.i];
-                    
-                    // Decreasing the PID gain incrementing value
-                    twiddle.gain_increments[twiddle.i] *= 0.9;
-                    
-                    // Resetting the order for the next PID gain
-                    twiddle.order = 1;
-                    
-                    // Moving to the next PID gain
-                    twiddle.i = (twiddle.i + 1) % 3;
-                    
-                    // Skipping the integral gain - Best performance with integral term = 0 so far
-                    if (twiddle.i == 1) {
-                      twiddle.i += 1;
-                    }
-                    
-                    break;
-                    
-                  }
-                  
-                } // End case 3
- 
-              } // End switch
+            if ((fabs(cte) > 4.5 && total_iterations > 100) || (speed < 5.0 && total_iterations > 100)) {
               
               cout << "Resetting" << endl;
               
+              pid_steering.Twiddle();
               ResetSimulator(ws);
-              pid.ResetError();
-              twiddle.ResetError();
+              pid_steering.ResetError();
+              total_iterations = 0;
               
-              // Skip sending control to simulator
+              // Skipping output to simulator
               goto end_cycle;
               
-            } // End twiddle
+            }
+            
+            else if (total_iterations > 400) {
+              
+              cout << "Twiddling" << endl;
+              
+              pid_steering.Twiddle();
+              total_iterations = 0;
+              
+            }
+            
+            cout << "Best Error: " << pid_steering.best_error << " Current Error: " << pid_steering.CalculateError() << endl;
+            
+            switch (pid_steering.i) {
+                
+              case 0: {
+                cout << "Tuning Proportional Gain - Twiddle Order: " << pid_steering.order << endl;
+                break;
+              }
+                
+              case 1: {
+                cout << "Tuning Integral Gain - Twiddle Order: " << pid_steering.order << endl;
+                break;
+              }
+                
+              case 2: {
+                cout << "Tuning Derivative Gain - Twiddle Order: " << pid_steering.order << endl;
+                break;
+              }
+                
+            } // End switch
+            
+            cout << "P inc: " << pid_steering.gain_increments[0] << " I inc: " << pid_steering.gain_increments[1] << " D inc: " << pid_steering.gain_increments[2] << endl;
             
           } // End optimizing mode
           
-          // Calculating the steering angle using the optimized PID gain values
-          // Start optimized mode
           else {
             
             cout << "Optimized" << endl;
             
-            pid.UpdateError(cte);
-            steer_value = pid.TotalError();
+            target_speed = 60;
+            speed_error = target_speed - speed;
+            pid_throttle.UpdateError(speed_error);
+            throttle_value = pid_throttle.TotalError() * (1.0 / (1.0 + fabs(angle)));
             
-            twiddle.iterations += 1;
-            twiddle.sum_squared_error += pow(cte, 2.0);
-            
-          } // End optimized mode
+          }
           
-//          cout << "PID gain: " << twiddle.i << endl;
-//          cout << "Twiddle order: " << twiddle.order << endl;
-//          cout << "P: " << pid.gain[0] << " I: " << pid.gain[1] << " D: " << pid.gain[2] << endl;
-//          cout << "P inc: " << twiddle.gain_increments[0] << " I inc: " << twiddle.gain_increments[1] << " D inc: " << twiddle.gain_increments[2] << endl;
-          
-          cout << "Error: " << twiddle.CalculateError() << endl;
-          
-          cout << "CTE: " << cte << " Steering Value: " << steer_value << endl;
+          cout << "P: " << pid_steering.gains[0] << " I: " << pid_steering.gains[1] << " D: " << pid_steering.gains[2] << endl;
+          cout << "CTE: " << cte << " Steering Value: " << rad2deg(steer_value) << " degrees" << endl;
+          cout << "Throttle Value: " << throttle_value << endl;
+          cout << endl;
           
           json msgJson;
           msgJson["steering_angle"] = steer_value;
-          msgJson["throttle"] = 0.3;
+          msgJson["throttle"] = throttle_value;
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-          //cout << msg << endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
           
         }
@@ -267,9 +185,8 @@ int main()
     }
     
   end_cycle:
-    int j = 0;
-    ++j;
-    
+    ;
+                
   });
 
   h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data, size_t, size_t) {
