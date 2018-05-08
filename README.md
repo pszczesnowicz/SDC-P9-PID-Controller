@@ -44,7 +44,7 @@ While optimizing the steering gains, the target speed was set to 40 MPH and was 
 
 Because of the inverse relationship of the throttle and steering, the car never reached 60 MPH, but managed a top speed of 55 MPH while staying in control.
 
-[<img src="https://raw.githubusercontent.com/pszczesnowicz/SDCND-P9-PIDController/master/readme_images/pid_controller.jpg" width="640">](https://youtu.be/EKCI0xIOJRA")
+[<img src="https://raw.githubusercontent.com/pszczesnowicz/SDCND-P9-PIDController/master/readme_images/pid_controller.jpg" width="640">](https://youtu.be/EKCI0xIOJRA "Click to watch")
 
 # Conclusion
 
